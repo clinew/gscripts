@@ -1,2 +1,10 @@
-Simple scripts for formatting and mounting a full-disk encrypted Gentoo
+Simple scripts for formatting and mounting encrypted devices. They're mostly
+specialized crap, but feel free to hijack them for your own purposes.
+
+=== Directory Listing ===
+external:
+Format and mount an external device.
+
+root:
+Format and 'init' (in 'initramfs') script for a full-disk encrypted Gentoo
 install. Current version is untested; use at your own risk.

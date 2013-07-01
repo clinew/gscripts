@@ -1,0 +1,5 @@
+external:
+- Add device rename capability to the 'umount.sh' script.
+
+root:
+- Actually test and run the bloody script.
