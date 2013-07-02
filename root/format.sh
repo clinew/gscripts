@@ -158,7 +158,7 @@ setup() {
 
 	# Format the filesystem.
 	mkfs.ext3 /dev/mapper/root
-	if [ "$?" -ne 0]; then # Failure.
+	if [ "$?" -ne 0 ]; then # Failure.
 		# Clean-up root mappings.
 		cryptsetup remove "root"
 		cryptsetup remove ".root4"
