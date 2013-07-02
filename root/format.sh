@@ -184,7 +184,7 @@ setup() {
 		cryptsetup remove ".root0"
 
 		# Exit failure.
-		echo "Unable to format filesystem."
+		echo "Unable to mount filesystem."
 		exit 1
 	fi
 }

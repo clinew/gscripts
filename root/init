@@ -28,7 +28,7 @@
 # The encryption key; this varies at different stages of the hashing/setup.
 KEY=""
 # Salt for the key-stretching algorithm.
-SALT=""
+SALT="GoGetYourOwnSalt"
 
 # Exit this script.
 die() {
@@ -41,15 +41,18 @@ die() {
 
 # Perform key-stretching.
 # 1: The key to stretch.
-# 2: Path to keyfile (used as a salt).
+# 2: (optional) Set the salt to use.
 key_stretch() {
 	# Validate arguments.
-	if [ $# -ne 2 ]; then
-		echo "key_stretch(); invalidate argument count: $#."
+	if [ $# -lt 1 ]; then
+		echo "key_stretch(); invalid argument count: $#."
 	fi
 
 	# Set the salt.
-	SALT=$(cat $2 | cut -c 1-16)
+	if [ $# -eq 2 ]; then
+		# Use the first 16 characters of the specified salt.
+		SALT=$(echo $2 | cut -c 1-16)
+	fi
 
 	# Stretch the key.
 	KEY=$(mkpasswd -m sha-256 -R 72851 $1 $SALT | cut -d '$' -f 5)
@@ -89,22 +92,22 @@ setup() {
 			die "Error setting up loop device."
 		fi
 		echo -n "Hashing/Setup."
-		key_stretch "$PASSPHRASE" "$DEVICE_LOOP"
+		key_stretch "$PASSPHRASE"
 		echo "$KEY" | cryptsetup create --cipher serpent-xts-essiv:sha256 --hash sha512 key0 "$DEVICE_LOOP"
 		echo -n "."
-		key_stretch "$KEY" "/dev/mapper/key0"
+		key_stretch "$KEY" "KEY"
 		echo "$KEY" | cryptsetup create --cipher aes-xts-essiv:sha256 --hash sha512 key1 /dev/mapper/key0
 		echo -n "."
-		key_stretch "$KEY" "/dev/mapper/key1"
+		key_stretch "$KEY" "KEY"
 		echo "$KEY" | cryptsetup create --cipher twofish-xts-essiv:sha256 --hash sha512 key2 /dev/mapper/key1
 		echo -n "."
-		key_stretch "$KEY" "/dev/mapper/key2"
+		key_stretch "$KEY" "KEY"
 		echo "$KEY" | cryptsetup create --cipher serpent-cbc-essiv:sha256 --hash sha512 key3 /dev/mapper/key2
 		echo -n "."
-		key_stretch "$KEY" "/dev/mapper/key3"
+		key_stretch "$KEY" "KEY"
 		echo "$KEY" | cryptsetup create --cipher aes-cbc-essiv:sha256 --hash sha512 key4 /dev/mapper/key3
 		echo "."
-		key_stretch "$KEY" "/dev/mapper/key4"
+		key_stretch "$KEY" "KEY"
 		echo "$KEY" | cryptsetup create --cipher twofish-cbc-essiv:sha256 --hash sha512 key5 /dev/mapper/key4
 		
 		# Set up root mappings.
