@@ -43,7 +43,7 @@ SALT=""
 arguments_parse() {
 	# Validate argument count.
 	if [ $# -ne 3 ]; then
-		die "Invalidate argument count: $#."
+		die "Invalid argument count: $#."
 	fi
 
 	# Parse arguments.
@@ -207,4 +207,4 @@ main() {
 	setup
 }
 
-main
+main $@
