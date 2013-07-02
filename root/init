@@ -166,10 +166,12 @@ switch() {
 # Validate the system. This function is not comprehensive.
 system_validate() {
 	# Check for 'mkpasswd'
-	if ! command -v mkpasswd > /dev/null; then
-		echo "Unable to find 'mkpasswd' utility."
-		exit 1
-	fi
+	# Apparently 'command' is a binary that would need to be inserted into
+	# the 'initramfs' as well...
+	#if ! command -v mkpasswd > /dev/null; then
+	#	echo "Unable to find 'mkpasswd' utility."
+	#	exit 1
+	#fi
 }
 
 # The main function (duh).
