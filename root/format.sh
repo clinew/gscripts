@@ -89,7 +89,7 @@ setup() {
 	until [ $DONE ]; do
 		# Read the passphrase.
 		echo "Enter passphrase:"
-		read -s PASSPRHASE
+		read -s PASSPHRASE
 
 		# Verify the passphrase.
 		echo "Verify passphrase:"
