@@ -37,7 +37,8 @@ MOUNTPOINT=""
 # The device to format.
 ROOT=""
 # Default salt for the key-stretching algorithm.
-SALT="GoGetYourOwnSalt"
+SALT_BASE="GoGetYourOwnSalt"
+SALT_CURRENT=${SALT_BASE}
 
 # Parse command-line arguments.
 arguments_parse() {
@@ -50,7 +51,6 @@ arguments_parse() {
 	ROOT=$1
 	KEY=$2
 	MOUNTPOINT=$3
-	echo $ROOT
 }
 
 # Exit this script.
@@ -74,11 +74,14 @@ key_stretch() {
 	# Set the salt.
 	if [ $# -eq 2 ]; then
 		# Use the first 16 characters of the specified salt.
-		SALT=$(echo $2 | cut -c 1-16)
+		SALT_CURRENT=$(echo $2 | cut -c 1-16)
+	else
+		# Use the base salt.
+		SALT_CURRENT=${SALT_BASE}
 	fi
 
 	# Stretch the key.
-	KEY=$(mkpasswd -m sha-256 -R 72851 $1 $SALT | cut -d '$' -f 5)
+	KEY=$(mkpasswd -m sha-256 -R 72851 $1 $SALT_CURRENT | cut -d '$' -f 5)
 }
 
 # Mount the root filesystem.
