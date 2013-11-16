@@ -191,6 +191,11 @@ setup() {
 
 # Validate the system. This function is not comprehensive.
 system_validate() {
+	# Check for 'cryptsetup'
+	if ! command -v cryptsetup > /dev/null; then
+		echo "Unable to find 'cryptsetup' utility."
+		exit 1
+	fi
 	# Check for 'mkpasswd'
 	if ! command -v mkpasswd > /dev/null; then
 		echo "Unable to find 'mkpasswd' utility."
