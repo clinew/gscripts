@@ -47,9 +47,10 @@ arguments_parse() {
 	fi
 
 	# Parse arguments.
-	ROOT="`echo "${1}" | cut -d'=' -f2`"
+	ROOT=$1
 	KEY=$2
 	MOUNTPOINT=$3
+	echo $ROOT
 }
 
 # Exit this script.
