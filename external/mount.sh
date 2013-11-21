@@ -147,7 +147,10 @@ function key_init {
 	fi
 
 	# Execute the key derivation function.
-	KEY=$(mkpasswd -m sha-256 -R 72853 $1 $SALT | cut -d '$' -f 5)
+	# The extra shenanegains with 'sed' is to prevent a corner-case where
+	# both 'mkpasswd' and 'echo' would fail if the first line of the
+	# passphrase is a '-'. What an ugly pain!
+	KEY=$(echo -n "C$1" | sed "s/^.//" | mkpasswd -m sha-256 -R 72853 -s -S $SALT | cut -d '$' -f 5)
 }
 
 # The main function, duh.
