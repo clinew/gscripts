@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# Simple program that cleans up the mappings for a device. The name is a
+# misnomer, since it doesn't actually unmount the mounted filesystem.
 #
 # Copyright (C) 2013 Wade T. Cline
 #
@@ -17,9 +20,58 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 #/
 
-cryptsetup remove device
-cryptsetup remove hop4
-cryptsetup remove hop3
-cryptsetup remove hop2
-cryptsetup remove hop1
-cryptsetup remove hop0
+# Name for the mapping of the device.
+NAME="device"
+
+# Parse arguments.
+function arguments_parse {
+	# Parse optional arguments.
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		-n|--name)
+			shift
+			NAME=$1
+			shift
+			;;
+		*)
+			usage_print "Unrecognized option: $1"
+		esac
+	done
+}
+
+# Check for installed tools.
+function system_validate {
+	# Check for 'cryptsetup'.
+	if ! command -v cryptsetup > /dev/null; then
+		usage_print "Unable to find 'cryptsetup' utility."
+	fi
+}
+
+# Print the usage message and exit.
+function usage_print {
+	# Print specific error message.
+	if [ $# -eq 1 ]; then
+		echo "ERROR: $1"
+	fi
+
+	# Print usage message.
+	echo "./umount.sh [-n <name>]"
+	echo ""
+	echo "-n|--name: Name for the mapping of the device (default: "
+	echo "           \"device\")"
+	exit
+}
+
+# Validate system pre-requirements.
+system_validate
+
+# Parse the arugments.
+arguments_parse $@
+
+# Remove the mappings.
+cryptsetup remove "${NAME}"
+cryptsetup remove ".${NAME}4"
+cryptsetup remove ".${NAME}3"
+cryptsetup remove ".${NAME}2"
+cryptsetup remove ".${NAME}1"
+cryptsetup remove ".${NAME}0"
