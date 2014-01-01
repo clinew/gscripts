@@ -60,14 +60,17 @@ function arguments_parse {
 }
 
 # Print the usage message.
+# 1:	An error message (optional).
 function usage_print {
+	echo "ERROR: $1."
+	echo ""
 	echo "./script.sh [-f] [-n <name>] <device> <mount point>"
 	echo ""
 	echo "--format: Format the specified filesystem as ext3; this will"
 	echo "          also force-verify the passphrase."
 	echo "  --name: Name for the mapping of the specified device."
 	echo "		(default: \"device\")."
-	exit
+	exit 1
 }
 
 # Setup cryptsetup. (almost redundant)
@@ -231,10 +234,19 @@ function main_format {
 # Makes sure that the system can run the script. Right now that just means
 # checking for the 'mkpasswd' utility. More checks could certainly be added.
 function system_validate {
+	# Check for root privileges.
+	if [[ ${EUID} -ne 0 ]]; then
+		usage_print "This script must be run as 'root'"
+	fi
+
+	# Check for 'cryptsetup' utility.
+	if ! command -v cryptsetup > /dev/null; then
+		usage_print "Unable to find 'cryptsetup' utility"
+	fi
+
 	# Check for 'mkpasswd' utility.
 	if ! command -v mkpasswd > /dev/null; then
-		echo "Unable to find 'mkpasswd' utility."
-		exit 1
+		usage_print "Unable to find 'mkpasswd' utility"
 	fi
 }
 
