@@ -21,6 +21,8 @@
 DEVICE=""
 # Whether to format the filesystem or not.
 FORMAT=`false`
+# Keyfile for the specified device.
+KEYFILE=`false`
 # Where to mount the device.
 MOUNTPOINT=""
 # Name for the mapping of the device.
@@ -42,14 +44,21 @@ function arguments_parse {
 			FORMAT=true
 			shift
 			;;
+		-k|--key-file)
+			shift
+			KEYFILE=${1}
+			if [ ! -f ${KEYFILE} ]; then
+				usage_print "Key file ${KEYFILE} not a file"
+			fi
+			shift
+			;;
 		-n|--name)
 			shift
 			NAME=$1
 			shift
 			;;
 		*)
-			echo "Unrecognized option: $1"
-			usage_print
+			usage_print "Unrecognized option: $1"
 		esac
 	done
 
@@ -63,17 +72,24 @@ function arguments_parse {
 function usage_print {
 	echo "ERROR: $1."
 	echo ""
-	echo "./mount.sh [-f] [-n <name>] <device> <mount point>"
+	echo "./mount.sh [-f] [-n name] [-k keyfile] <device> <mount point>"
 	echo ""
 	echo "--format: Format the specified filesystem as ext3; this will"
 	echo "          also force-verify the passphrase."
 	echo "  --name: Name for the mapping of the specified device."
 	echo "		(default: \"device\")."
+	echo "--key-file: Password-protected keyfile for the specified device."
 	exit 1
 }
 
 # The main function, duh.
 function main {
+	# Cheap hack to seamlessly pass a keyfile argument.
+	if [ ! -z ${KEYFILE} ]; then
+		KEYFILE="-k ${KEYFILE}"
+	fi
+
+	# Call the correct main function.
 	if [ $FORMAT ]; then
 		main_format
 	else
@@ -112,7 +128,7 @@ function main_format {
 	done
 
 	# Format and mount the device.
-	./cryptsetup.sh init ${DEVICE} ${PASSPHRASE} ${SALT} ${NAME}
+	./cryptsetup.sh init -n ${NAME} ${KEYFILE} ${DEVICE} ${PASSPHRASE} ${SALT}
 	mkfs.ext3 "/dev/mapper/${NAME}"
 	main_mount
 	if [ $? -ne 0 ]; then
@@ -140,7 +156,7 @@ function main_normal {
 		read -s PASSPHRASE
 
 		# Setup cryptsetup.
-		./cryptsetup.sh init ${DEVICE} ${PASSPHRASE} ${SALT} ${NAME}
+		./cryptsetup.sh init -n ${NAME} ${KEYFILE} ${DEVICE} ${PASSPHRASE} ${SALT}
 
 		# Mount the device.
 		main_mount

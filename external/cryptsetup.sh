@@ -21,13 +21,15 @@
 COMMAND=""
 # The device to mount.
 DEVICE=""
+# Keyfile for the specified device.
+KEYFILE=`false`
 # Name for the mapping of the device.
 NAME="device"
 # Passphrase for the device.
 PASSPHRASE=""
 # Salt for the key-stretching algorithm.
 SALT=""
-SALT_BASE="1i8f0wjQpvtFbCRP"
+SALT_BASE=""
 
 # Parse arguments.
 function arguments_parse {
@@ -41,10 +43,26 @@ function arguments_parse {
 	shift
 	case "${COMMAND}" in
 	init)
-		# Check for remaining arguments.
-		if [ $# -lt 3 ]; then
-			usage_print "Too few arguments for command '${COMMAND}'."
-		fi
+		# Parse optional arguments.
+		while [ $# -gt 3 ]; do
+			case "${1}" in
+			-n|--name)
+				shift
+				NAME=${1}
+				shift
+				;;
+			-k|--key-file)
+				shift
+				KEYFILE=${1}
+				if [ ! -f ${KEYFILE} ]; then
+					usage_print "Keyfile does not exist"
+				fi
+				shift
+				;;
+			*)
+				usage_print "Unrecognized option: ${1}"
+			esac
+		done
 
 		# Parse the device.
 		DEVICE=${1}
@@ -62,17 +80,15 @@ function arguments_parse {
 		shift
 		;;
 	free)
-		# Do nothing.
+		# Parse the mapping name.
+		if [ $# -gt 0 ]; then
+			NAME=${1}
+			shift
+		fi
 		;;
 	*)
 		usage_print "Unrecognized command ${COMMAND}"
 	esac
-
-	# Parse the mapping name.
-	if [ $# -gt 0 ]; then
-		NAME=${1}
-	fi
-	shift
 
 	# Check for additonal arguments.
 	if [ $# -gt 0 ]; then
@@ -80,27 +96,64 @@ function arguments_parse {
 	fi
 }
 
+# Set up the specified hop.
+# 1:	Cipher for the current hop.
+# 2:	Mapping destination for the current hop.
+# 3:	Block device source for the current hop.
+# 4:	Keyfile destination for the current hop.
+# 5:	Keyfile source for the current hop.
+function cryptsetup_init_hop {
+	echo -n "."
+
+	# Stretch the key.
+	cryptsetup_key_init
+
+	# Get the key from the keyfile.
+	if [ ! -z ${KEYFILE} ]; then
+		echo "${KEY}" | cryptsetup create --cipher ${1} --key-file=- "${4}" "${5}" 
+		PASSPHRASE=${KEY}
+		KEY=`cat /dev/mapper/${4}`
+	fi
+
+	# Set up the mapping.
+	echo "${KEY}" | cryptsetup create --cipher ${1} --key-file=- ${2} ${3}
+
+	# Reset the key.
+	if [ ! -z ${KEYFILE} ]; then
+		KEY=${PASSPHRASE}
+	fi
+}
+
 # Setup cryptsetup. (almost redundant)
 function cryptsetup_init {
-	# Set up the decrypted device (paranoid much?).
-	echo -n "Hashing/Setup of '${DEVICE}'."
-	cryptsetup_key_init ${PASSPHRASE}
-	echo "$KEY" | cryptsetup create --cipher serpent-xts-essiv:sha256 --hash sha512 ".${NAME}0" ${DEVICE}
-	echo -n "."
-	cryptsetup_key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher aes-xts-essiv:sha256 --hash sha512 ".${NAME}1" /dev/mapper/".${NAME}0"
-	echo -n "."
-	cryptsetup_key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher twofish-xts-essiv:sha256 --hash sha512 ".${NAME}2" /dev/mapper/".${NAME}1"
-	echo -n "."
-	cryptsetup_key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher serpent-cbc-essiv:sha256 --hash sha512 ".${NAME}3" /dev/mapper/".${NAME}2"
-	echo -n "."
-	cryptsetup_key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher aes-cbc-essiv:sha256 --hash sha512 ".${NAME}4" /dev/mapper/".${NAME}3"
-	echo "."
-	cryptsetup_key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher twofish-cbc-essiv:sha256 --hash sha512 "${NAME}" /dev/mapper/".${NAME}4"
+	# Set the first value of the key.
+	KEY=${PASSPHRASE}
+
+	# Set up the keyfile.
+	if [ ! -z ${KEYFILE} ]; then
+		DEVICE_LOOP=`losetup -f`
+		losetup "${DEVICE_LOOP}" "${KEYFILE}"
+		if [ "$?" -ne 0 ]; then
+			usage_print "Error setting up loop device: $?"
+		fi
+	fi
+
+	# Set up the mappings.
+	echo -n "Hashing/Setup of '${DEVICE}'"
+	cryptsetup_init_hop "serpent-xts-essiv:sha256" ".${NAME}0" "${DEVICE}" ".${NAME}_key0" "${KEYFILE}"
+	cryptsetup_init_hop "aes-xts-essiv:sha256" ".${NAME}1" "/dev/mapper/.${NAME}0" ".${NAME}_key1" "/dev/mapper/.${NAME}_key0"
+	cryptsetup_init_hop "twofish-xts-essiv:sha256" ".${NAME}2" "/dev/mapper/.${NAME}1" ".${NAME}_key2" "/dev/mapper/.${NAME}_key1"
+	cryptsetup_init_hop "serpent-xts-essiv:sha256" ".${NAME}3" "/dev/mapper/.${NAME}2" ".${NAME}_key3" "/dev/mapper/.${NAME}_key2"
+	cryptsetup_init_hop "aes-xts-essiv:sha256" ".${NAME}4" "/dev/mapper/.${NAME}3" ".${NAME}_key4" "/dev/mapper/.${NAME}_key3"
+	cryptsetup_init_hop "twofish-xts-essiv:sha256" "${NAME}" "/dev/mapper/.${NAME}4" "${NAME}_key" "/dev/mapper/.${NAME}_key4"
+	echo ""
+
+	# Free the keyfile.
+	if [ ! -z ${KEYFILE} ]; then
+		NAME="${NAME}_key"
+		cryptsetup_free
+		losetup -d "${DEVICE_LOOP}"
+	fi
 }
 
 # Remove cryptsetup mappings.
@@ -121,27 +174,26 @@ function cryptsetup_free {
 
 # Initialize the key through a deliberately-slow Key Derivation Function (KDF).
 # 1:	The specified passphrase to initialize the key with.
-# 2:	(optional); Use part of the previous output as the salt.
 function cryptsetup_key_init {
 	# Validate arguments.
-	if [ $# -lt 1 ]; then
+	if [ $# -ne 0 ]; then
 		usage_print "cryptsetup_key_init() invalid argument count: $#."
 	fi
 
-	# Get the salt.
-	if [ $# -eq 2 ]; then
-		# Use the first 16 characters of the second argument.
-		SALT=$(echo ${2} | cut -c 1-16)
-	else
-		# Use the global salt.
+	# Set the salt.
+	if [ "${KEY}" == "${PASSPHRASE}" ]; then
+		# Use the base salt.
 		SALT=${SALT_BASE}
+	else
+		# Use the first 16 characters of the key.
+		SALT=$(echo ${KEY} | cut -c 1-16)
 	fi
 
 	# Execute the key derivation function.
 	# The extra shenanegains with 'sed' is to prevent a corner-case where
 	# both 'mkpasswd' and 'echo' would fail if the first line of the
 	# passphrase is a '-'. What an ugly pain!
-	KEY=$(echo -n "C${1}" | sed "s/^.//" | mkpasswd -m sha-256 -R 72853 -s -S $SALT | cut -d '$' -f 5)
+	KEY=$(echo -n "C${KEY}" | sed "s/^.//" | mkpasswd -m sha-256 -R 72853 -s -S ${SALT} | cut -d '$' -f 5)
 }
 
 # Makes sure that the system can run the script.
@@ -167,7 +219,7 @@ function system_validate {
 function usage_print {
 	echo "ERROR: $1."
 	echo ""
-	echo "./cryptsetup.sh init <device> <passphrase> <salt> [name]"
+	echo "./cryptsetup.sh init [-n name] [-k keyfile] <device> <passphrase> <salt>"
 	echo "./cryptsetup.sh free [name]"
 	echo ""
 	echo "  init:	Initialize mappings."
