@@ -69,9 +69,4 @@ system_validate
 arguments_parse $@
 
 # Remove the mappings.
-cryptsetup remove "${NAME}"
-cryptsetup remove ".${NAME}4"
-cryptsetup remove ".${NAME}3"
-cryptsetup remove ".${NAME}2"
-cryptsetup remove ".${NAME}1"
-cryptsetup remove ".${NAME}0"
+./cryptsetup.sh free ${NAME}

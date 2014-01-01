@@ -26,14 +26,13 @@ MOUNTPOINT=""
 # Name for the mapping of the device.
 NAME="device"
 # Salt for the key-stretching algorithm.
-SALT_GLOBAL="1i8f0wjQpvtFbCRP"
+SALT="1i8f0wjQpvtFbCRP"
 
 # Parse arguments.
 function arguments_parse {
 	# Validate argument count.
 	if [ $# -lt 2 ]; then
-		echo "Too few arguments."
-		usage_print
+		usage_print "Too few arguments"
 	fi
 
 	# Parse optional arguments.
@@ -55,8 +54,8 @@ function arguments_parse {
 	done
 
 	# Parse base options
-	DEVICE=$1
-	MOUNTPOINT=$2
+	DEVICE=${1}
+	MOUNTPOINT=${2}
 }
 
 # Print the usage message.
@@ -64,96 +63,13 @@ function arguments_parse {
 function usage_print {
 	echo "ERROR: $1."
 	echo ""
-	echo "./script.sh [-f] [-n <name>] <device> <mount point>"
+	echo "./mount.sh [-f] [-n <name>] <device> <mount point>"
 	echo ""
 	echo "--format: Format the specified filesystem as ext3; this will"
 	echo "          also force-verify the passphrase."
 	echo "  --name: Name for the mapping of the specified device."
 	echo "		(default: \"device\")."
 	exit 1
-}
-
-# Setup cryptsetup. (almost redundant)
-# 1:	The passphrase.
-function cryptsetup_init {
-	# Validate arguments
-	if [ $# -ne 1 ]; then
-		echo "cryptsetup_init(); invalid argument count: $#."
-	fi
-
-	# Set up the decrypted device (paranoid much?).
-	echo -n "Hashing/Setup."
-	key_init $1
-	echo "$KEY" | cryptsetup create --cipher serpent-xts-essiv:sha256 --hash sha512 ".${NAME}0" ${DEVICE}
-	echo -n "."
-	key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher aes-xts-essiv:sha256 --hash sha512 ".${NAME}1" /dev/mapper/".${NAME}0"
-	echo -n "."
-	key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher twofish-xts-essiv:sha256 --hash sha512 ".${NAME}2" /dev/mapper/".${NAME}1"
-	echo -n "."
-	key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher serpent-cbc-essiv:sha256 --hash sha512 ".${NAME}3" /dev/mapper/".${NAME}2"
-	echo -n "."
-	key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher aes-cbc-essiv:sha256 --hash sha512 ".${NAME}4" /dev/mapper/".${NAME}3"
-	echo "."
-	key_init $KEY $KEY
-	echo "$KEY" | cryptsetup create --cipher twofish-cbc-essiv:sha256 --hash sha512 "${NAME}" /dev/mapper/".${NAME}4"
-}
-
-# Format the encrypted filesystem.
-function cryptsetup_format {
-	mkfs.ext3 "/dev/mapper/${NAME}"
-}
-
-# Remove cryptsetup mappings.
-function cryptsetup_free {
-	# Validate arguments.
-	if [ $# -ne 0 ]; then
-		echo "cryptsetup_free(); invalid argument count: $#."
-	fi
-
-	# Remove cryptsetup mappings.
-	cryptsetup remove "${NAME}"
-	cryptsetup remove ".${NAME}4"
-	cryptsetup remove ".${NAME}3"
-	cryptsetup remove ".${NAME}2"
-	cryptsetup remove ".${NAME}1"
-	cryptsetup remove ".${NAME}0"
-}
-
-# Try to mount the encrypted filesystem.
-# return:	Whether or not the filesystem was mounted successfully;
-#		specifically, the return value of 'mount'.
-function cryptsetup_mount {
-	mount -t ext3 /dev/mapper/$NAME $MOUNTPOINT
-	return $?
-}
-
-# Initialize the key through a deliberately-slow Key Derivation Function (KDF).
-# 1:	The specified passphrase to initialize the key with.
-# 2:	(optional); Use part of the previous output as the salt.
-function key_init {
-	# Validate arguments.
-	if [ $# -lt 1 ]; then
-		echo "key_init() invalid argument count: $#."
-	fi
-
-	# Get the salt.
-	if [ $# -eq 2 ]; then
-		# Use the first 16 characters of the second argument.
-		SALT=$(echo $2 | cut -c 1-16)
-	else
-		# Use the global salt.
-		SALT=$SALT_GLOBAL
-	fi
-
-	# Execute the key derivation function.
-	# The extra shenanegains with 'sed' is to prevent a corner-case where
-	# both 'mkpasswd' and 'echo' would fail if the first line of the
-	# passphrase is a '-'. What an ugly pain!
-	KEY=$(echo -n "C$1" | sed "s/^.//" | mkpasswd -m sha-256 -R 72853 -s -S $SALT | cut -d '$' -f 5)
 }
 
 # The main function, duh.
@@ -163,33 +79,6 @@ function main {
 	else
 		main_normal
 	fi
-}
-
-# Just mount the filesystem.
-function main_normal {
-	DONE=`false`
-
-	# Continuously try to mount the filesystem.
-	until [ $DONE ]; do
-		echo "Passphrase:"
-
-		# Read the passphrase.
-		read -s PASSPHRASE
-
-		# Setup cryptsetup
-		cryptsetup_init $PASSPHRASE
-
-		# Mount the device.
-		cryptsetup_mount
-		if [ $? -ne 0 ]; then
-			cryptsetup_free
-			echo "Mount failed: Password incorrect, filesystem corrupted, or other issue."
-			echo "Try again."
-		else
-			echo "Successfully mounted."
-			DONE=true
-		fi
-	done
 }
 
 # Format and mount the filesystem.
@@ -223,12 +112,47 @@ function main_format {
 	done
 
 	# Format and mount the device.
-	cryptsetup_init $PASSPHRASE
-	cryptsetup_format
-	cryptsetup_mount
+	./cryptsetup.sh init ${DEVICE} ${PASSPHRASE} ${SALT} ${NAME}
+	mkfs.ext3 "/dev/mapper/${NAME}"
+	main_mount
 	if [ $? -ne 0 ]; then
 		echo "Something terrible has happened."
+	else
+		echo "Successfully mounted."
 	fi
+}
+
+# Mounts the mapped device.
+function main_mount {
+	mount -t ext3 "/dev/mapper/${NAME}" "${MOUNTPOINT}"
+	return $?
+}
+
+# Just mount the filesystem.
+function main_normal {
+	DONE=`false`
+
+	# Continuously try to mount the filesystem.
+	until [ $DONE ]; do
+		echo "Passphrase:"
+
+		# Read the passphrase.
+		read -s PASSPHRASE
+
+		# Setup cryptsetup.
+		./cryptsetup.sh init ${DEVICE} ${PASSPHRASE} ${SALT} ${NAME}
+
+		# Mount the device.
+		main_mount
+		if [ $? -ne 0 ]; then
+			./cryptsetup.sh free ${NAME}
+			echo "Mount failed: Password incorrect, filesystem corrupted, or other issue."
+			echo "Try again."
+		else
+			echo "Successfully mounted."
+			DONE=true
+		fi
+	done
 }
 
 # Makes sure that the system can run the script. Right now that just means
