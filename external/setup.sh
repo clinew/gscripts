@@ -98,17 +98,17 @@ function passphrase_get {
 
 		# Verify the passphrase.
 		if [ ${FORMAT} ]; then
-			echo "Verify password:"
+			echo "Verify passphrase:"
 			read -s VERIFY
 		else
 			# Or not.
 			VERIFY=${PASSPHRASE}
 		fi
 
-		# Check password match.
+		# Check passphrase match.
 		if [ ${PASSPHRASE} != ${VERIFY} ]; then # Failure.
 			# See if the user wishes to try again.
-			echo "Passwords do not match."
+			echo "Passphrases do not match."
 			echo "Try again? [Y/n]"
 			read AGAIN
 			if [ ${AGAIN} == "n" ]; then # Quitting.
