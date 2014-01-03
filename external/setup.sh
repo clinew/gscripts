@@ -168,9 +168,12 @@ function setup_raid5 {
 
 			# Check for RAID-5 device.
 			if [ ! ${FORMAT} ]; then
-				mdadm -Q "/dev/mapper/${DEVICE_NAME}"
+				mdadm --examine "/dev/mapper/${DEVICE_NAME}"
 				if [ $? -ne 0 ]; then
 					local AGAIN=""
+
+					# Free the mapping.
+					./cryptsetup.sh free ${DEVICE_NAME}
 
 					# Prompt to re-enter passphrase.
 					echo "Device /dev/mapper/${DEVICE_NAME} does not appear to be a RAID-5 device."
