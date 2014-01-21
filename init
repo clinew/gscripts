@@ -1,0 +1,159 @@
+#!/bin/busybox ash
+# History: (y/m/d)
+# ------------------
+# 2013.02.11 - Wade Cline
+#    Completely gutted and re-made into something simple and dumb for his own
+#    nefarious purposes. Muahaha. (obvious sarcasm is obvious, though IANAL)
+# 2006.08.24 - Federico Zagarzazu
+#    Fix: call splash_setup() if fbsplash args exist   
+# 2006.08.06 - Federico Zagarzazu
+#    Released.
+# 2006.08.06 - Federico Zagarzazu
+#    Fixed: /dev/device-mapper /dev/mapper/control issue 
+#	   otherwise it fails on my amd64 system
+# 2006.08.04 - Federico Zagarzazu
+#    Bug fixes, several improvements.
+#    Test phase finished.
+# 2006.06.20 - Federico Zagarzazu
+#    Written.
+# 
+# Thank you! 
+# ---------------------------------------------------------------
+# o Alon Bar-Lev [http://en.gentoo-wiki.com/wiki/Linux_Disk_Encryption_Using_LoopAES_And_SmartCards]
+#	 I stole ideas, general structure and entire functions from his init script.
+# o nix
+#
+# o Andreas Steinmetz [kernel doc: power/swsusp-dmcrypt.txt]
+
+# A space-separated list of devices for RAID assembly.
+DEVICES=""
+
+# Exit this script.
+die() {
+	umount -n /mnt 2> /dev/null
+	echo "$1"
+	echo 
+	echo "Dropping into a minimal shell..."
+	exec /bin/sh
+}
+
+# Parse command-line arguments.
+parse_cmdl_args() {
+	# Get the arguments from the command-line.
+	CMDLINE=`cat /proc/cmdline`
+	for param in $CMDLINE; do
+		case "${param}" in
+			root=*)
+				ROOT="`echo "${param}" | cut -d'=' -f2`"
+				;;
+			# A little sketch. Devices should be an array but the
+			# busybox shell does not recognize arrays. Instead,
+			# pass the "array" as a space-separated string.
+			devices=*)
+				DEVICES="`echo ${param} | cut -d'=' -f2 | sed 's/,/ /g'`"
+				;;
+		esac
+	done
+
+	# Add device-names to '/dev'.
+	#
+	# Boat-loads of fun right here. We need to uniquely identify each of the
+	# encrypted disks on the system. UUIDs and LABELs will not work, since
+	# that information would be encrypted along with the disk contents, and
+	# possibly modified when nearby data is modified. The obvious candidate
+	# is to use '/dev/disk/by-id', but that entry is populated by 'udevd' in
+	# userspace and not in the 'initramfs' (unless one wished to create a
+	# statically-compiled version of said utility). The other obvious option
+	# is to use 'sysfs' files to quickly rebuild the data, but, while
+	# 'sysfs' exports the 'model' and 'vendor' attributes, it does not
+	# export the Serial # of the device.
+	#
+	# So, what we'll do instead is to read the data using a statically-
+	# compiled version of 'hdparm' and create the corresponding
+	# '/dev/disk/by-id' entries ourselves. Whee!
+	mkdir -p "/dev/disk/by-id"
+	for DEVICE in `ls /dev/sd[a-z]`; do
+		local NAME
+
+		# Parse the name of the device.
+		# Cheap hack. All of my devices are ATA so this will work for
+		# now...
+		NAME="ata-"
+		# Parse the model number.
+		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Model Number:' | sed -r 's/[ \t]*Model Number:[ \t]*'// | sed -r 's/\b[ \t]+\b/_/g' | sed -r 's/ *$//g'`_"
+		# Parse the serial number.
+		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Serial Number:' | sed -r 's/[ \t]*Serial Number:[ \t]*'// | sed -r 's/\b[ \t]+\b/_/g' | sed -r 's/ *$//g'`"
+
+		# Create the symbolic link
+		ln -s "${DEVICE}" "/dev/disk/by-id/${NAME}"
+	done
+}
+
+# Mount the root filesystem.
+setup() {
+	/bin/bash /setup.sh raid5 -m /new-root ${DEVICES}
+}
+
+# Switch root.
+switch() {
+	# Unmount everything and switch root filesystems for good:
+	# exec the real init and begin the real boot process.
+	echo > /proc/sys/kernel/hotplug
+	echo "Switching / ..."
+	/bin/umount -l /proc
+	/bin/umount -l /sys
+	/bin/umount -l /dev
+	exec switch_root /new-root /sbin/init
+}
+
+# Validate the system. This function is not comprehensive.
+system_validate() {
+	# Check for 'mkpasswd'
+	if ! command -v mkpasswd > /dev/null; then
+		echo "Unable to find 'mkpasswd' utility."
+		exit 1
+	fi
+}
+
+# The main function (duh).
+main() {
+	# This seems to magically make things not instantly explode.
+	# Fuck if I know why.
+	/bin/busybox sleep 3
+	# We need to make sure the script knows where to execute files from.
+	# This will tell the shell where to search for executable files.
+	export PATH=/sbin:/bin:/usr/bin
+	# We need to make sure the busybox binaries are in the RAM filesystem.
+	# This will extract the binaries from busybox and place them in their
+	# correct (hopefully) directories. Not sure what the -s option does.
+	/bin/busybox --install -s
+	# I think that this sets permissions of any created files.
+	umask 0777
+	# Mount the proc filesystem.
+	[ ! -d /proc ] && mkdir /proc
+	/bin/mount -t proc proc /proc
+	# Set up more directories...
+	[ ! -d /tmp ] && mkdir /tmp
+	[ ! -d /mnt ] && mkdir /mnt
+	[ ! -d /new-root ] && mkdir /new-root
+	# Mount the sysfs filesystem.
+	/bin/mount -t sysfs sysfs /sys
+	# populate /dev from /sys
+	/bin/mount -t devtmpfs devtmpfs /dev
+	/sbin/mdev -s
+	# Parse the command-line arguments into the appropriate shell variables.
+	parse_cmdl_args
+	# handle hotplug events
+	echo /sbin/mdev > /proc/sys/kernel/hotplug
+
+	# Validate the system.
+	system_validate
+
+	# Mount the filesystem.
+	setup
+
+	# Switch root over.
+	switch
+}
+
+main

@@ -31,7 +31,7 @@ NAME="device"
 SALT="1i8f0wjQpvtFbCRP"
 
 # Parse arguments.
-function arguments_parse {
+arguments_parse() {
 	# Validate argument count.
 	if [ $# -lt 2 ]; then
 		usage_print "Too few arguments"
@@ -69,7 +69,7 @@ function arguments_parse {
 
 # Print the usage message.
 # 1:	An error message (optional).
-function usage_print {
+usage_print() {
 	echo "ERROR: $1."
 	echo ""
 	echo "./mount.sh [-f] [-n name] [-k keyfile] <device> <mount point>"
@@ -83,7 +83,7 @@ function usage_print {
 }
 
 # The main function, duh.
-function main {
+main() {
 	# Cheap hack to seamlessly pass a keyfile argument.
 	if [ ! -z ${KEYFILE} ]; then
 		KEYFILE="-k ${KEYFILE}"
@@ -98,7 +98,7 @@ function main {
 }
 
 # Format and mount the filesystem.
-function main_format {
+main_format() {
 	DONE=`false`
 
 	# Read and verify the passphrase.
@@ -139,13 +139,13 @@ function main_format {
 }
 
 # Mounts the mapped device.
-function main_mount {
+main_mount() {
 	mount -t ext3 "/dev/mapper/${NAME}" "${MOUNTPOINT}"
 	return $?
 }
 
 # Just mount the filesystem.
-function main_normal {
+main_normal() {
 	DONE=`false`
 
 	# Continuously try to mount the filesystem.
@@ -173,7 +173,7 @@ function main_normal {
 
 # Makes sure that the system can run the script. Right now that just means
 # checking for the 'mkpasswd' utility. More checks could certainly be added.
-function system_validate {
+system_validate() {
 	# Check for root privileges.
 	if [[ ${EUID} -ne 0 ]]; then
 		usage_print "This script must be run as 'root'"

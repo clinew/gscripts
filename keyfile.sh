@@ -18,7 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Validate system pre-requirements.
-function system_validate {
+system_validate() {
 	# Check for 'losetup'.
 	if ! command -v losetup > /dev/null; then
 		usage_print "Unable to find 'losetup' utility"
@@ -27,7 +27,7 @@ function system_validate {
 
 # Print the usage message and exit the program.
 # 1:	An error message (optional).
-function usage_print {
+usage_print() {
 	# Print the error message.
 	if [ $# -gt 0 ]; then
 		echo "ERROR: ${1}."

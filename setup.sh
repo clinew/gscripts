@@ -38,7 +38,7 @@ RAID_NAME="/dev/md0"
 SALT="GoGetYourOwnSalt"
 
 # Parse the arguments.
-function arguments_parse {
+arguments_parse() {
 	# Parse the command.
 	if [ $# -lt 1 ]; then
 		usage_print "Must specify a command"
@@ -47,22 +47,23 @@ function arguments_parse {
 	shift
 
 	# Parse any optional arguments.
-	case "${1}" in
-	-f|--format) # Format the device.
-		FORMAT=true
+	while [ "${1:0:1}" == '-' ]; do
+		case "${1}" in
+		-f|--format) # Format the device.
+			FORMAT=true
+			;;
+		-m|--mountpoint)
+			shift
+			MOUNTPOINT=${1}
+			if [ ! -d ${MOUNTPOINT} ]; then
+				usage_print "Not a directory: ${MOUNTPOINT}"
+			fi
+			;;
+		*) # Do nothing.
+			;;
+		esac
 		shift
-		;;
-	-m|--mountpoint)
-		shift
-		MOUNTPOINT=${1}
-		if [ ! -d ${MOUNTPOINT} ]; then
-			usage_print "Not a directory: ${MOUNTPOINT}"
-		fi
-		shift
-		;;
-	*) # Do nothing.
-		;;
-	esac
+	done
 
 	# Parse each block device.
 	DEVICES=($@)
@@ -76,7 +77,7 @@ function arguments_parse {
 
 # Print the erorr message and exit failure.
 # 1:	Specified error message to print.
-function die {
+die() {
 	# Print the error message.
 	echo "ERROR: $1."
 
@@ -85,7 +86,7 @@ function die {
 }
 
 # Reads the passphrase from the user.
-function passphrase_get {
+passphrase_get() {
 	local AGAIN=true
 	local DONE=`false`
 	local VERIFY=""
@@ -106,7 +107,7 @@ function passphrase_get {
 		fi
 
 		# Check passphrase match.
-		if [ ${PASSPHRASE} != ${VERIFY} ]; then # Failure.
+		if [ "${PASSPHRASE}" != "${VERIFY}" ]; then # Failure.
 			# See if the user wishes to try again.
 			echo "Passphrases do not match."
 			echo "Try again? [Y/n]"
@@ -123,12 +124,14 @@ function passphrase_get {
 }
 
 # Setup the root filesystem as an encrypted RAID-5 array.
-function setup_raid5 {
+setup_raid5() {
 	# Check for required utilities.
 	validate_command "cryptsetup"
 	validate_command "losetup"
 	validate_command "mdadm"
-	validate_command "mkfs.ext4"
+	if [ ${FORMAT} ]; then
+		validate_command "mkfs.ext4"
+	fi
 	validate_command "mkpasswd"
 
 	# Check device count.
@@ -225,7 +228,7 @@ function setup_raid5 {
 
 # Check the specified command exists.
 # 1:	The command to check for.
-function validate_command {
+validate_command() {
 	# Validate argument count.
 	if [ $# -ne 1 ]; then
 		die "Invalid argument count: $#"
@@ -239,7 +242,7 @@ function validate_command {
 
 # Print the usage message and exit failure.
 # 1:	The specific error message (optional).
-function usage_print {
+usage_print() {
 	# Print the specified error message.
 	if [ $# -gt 0 ]; then
 		echo "ERROR: ${1}"

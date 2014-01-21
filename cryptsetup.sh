@@ -32,7 +32,7 @@ SALT=""
 SALT_BASE=""
 
 # Parse arguments.
-function arguments_parse {
+arguments_parse() {
 	# Validate argument count.
 	if [ $# -lt 2 ]; then
 		usage_print "Too few arguments"
@@ -67,7 +67,7 @@ function arguments_parse {
 		# Parse the device.
 		DEVICE=${1}
 		if [ ! -b ${DEVICE} ]; then
-			usage_print "Not a block device file: ${DEVICE}"
+			usage_print "Not a block device: ${DEVICE}"
 		fi
 		shift
 
@@ -102,7 +102,7 @@ function arguments_parse {
 # 3:	Block device source for the current hop.
 # 4:	Keyfile destination for the current hop.
 # 5:	Keyfile source for the current hop.
-function cryptsetup_init_hop {
+cryptsetup_init_hop() {
 	echo -n "."
 
 	# Stretch the key.
@@ -125,7 +125,7 @@ function cryptsetup_init_hop {
 }
 
 # Setup cryptsetup. (almost redundant)
-function cryptsetup_init {
+cryptsetup_init() {
 	# Set the first value of the key.
 	KEY=${PASSPHRASE}
 
@@ -157,7 +157,7 @@ function cryptsetup_init {
 }
 
 # Remove cryptsetup mappings.
-function cryptsetup_free {
+cryptsetup_free() {
 	# Validate arguments.
 	if [ $# -ne 0 ]; then
 		usage_print "cryptsetup_free(); invalid argument count: $#."
@@ -174,7 +174,7 @@ function cryptsetup_free {
 
 # Initialize the key through a deliberately-slow Key Derivation Function (KDF).
 # 1:	The specified passphrase to initialize the key with.
-function cryptsetup_key_init {
+cryptsetup_key_init() {
 	# Validate arguments.
 	if [ $# -ne 0 ]; then
 		usage_print "cryptsetup_key_init() invalid argument count: $#."
@@ -197,7 +197,7 @@ function cryptsetup_key_init {
 }
 
 # Makes sure that the system can run the script.
-function system_validate {
+system_validate() {
 	# Check for root privileges.
 	if [[ ${EUID} -ne 0 ]]; then
 		usage_print "This script must be run as 'root'"
@@ -216,7 +216,7 @@ function system_validate {
 
 # Print the usage message.
 # 1:	An error message (optional).
-function usage_print {
+usage_print() {
 	echo "ERROR: $1."
 	echo ""
 	echo "./cryptsetup.sh init [-n name] [-k keyfile] <device> <passphrase> <salt>"

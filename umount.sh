@@ -24,7 +24,7 @@
 NAME="device"
 
 # Parse arguments.
-function arguments_parse {
+arguments_parse() {
 	# Parse optional arguments.
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -40,7 +40,7 @@ function arguments_parse {
 }
 
 # Check for installed tools.
-function system_validate {
+system_validate() {
 	# Check for 'cryptsetup'.
 	if ! command -v cryptsetup > /dev/null; then
 		usage_print "Unable to find 'cryptsetup' utility."
@@ -48,7 +48,7 @@ function system_validate {
 }
 
 # Print the usage message and exit.
-function usage_print {
+usage_print() {
 	# Print specific error message.
 	if [ $# -eq 1 ]; then
 		echo "ERROR: $1"

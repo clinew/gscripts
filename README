@@ -1,10 +1,19 @@
-Simple scripts for formatting and mounting encrypted devices. They're mostly
-specialized crap, but feel free to hijack them for your own purposes.
+Various System Administration scripts meant for a Gentoo OS, but that may run
+on other machines.
 
-=== Directory Listing ===
-external:
-Format and mount an external device.
+--- Script listing ---
 
-root:
-Format and 'init' (in 'initramfs') script for a full-disk encrypted Gentoo
-install. Current version is untested; use at your own risk.
+cryptsetup: Sets up the mappings for multi-layer encryption.
+
+init: 'initramfs' early-userspace (ugh) script.
+
+install: Install a Gentoo system.
+install_chroot: Executes for the 'chroot' portion of a Gentoo install.
+
+keyfile: Generate a random-number keyfile.
+
+mount: Mounts a device with multi-layer encryption.
+
+setup: Mounts/formats a Gentoo root filesystem.
+
+umount: Removes mappings for the specified encryption mapping.
