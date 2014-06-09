@@ -66,12 +66,23 @@ arguments_parse() {
 	done
 
 	# Parse each block device.
-	DEVICES=($@)
-	for DEVICE in ${DEVICES[@]}; do
+	TEMP=($@)
+	DEVICES=()
+	for DEVICE in ${TEMP[@]}; do
 		# Check for block device.
-		if [ ! -b ${DEVICE} ]; then
+		if [[ ! -e ${DEVICE} ]]; then
+			echo -n "Device '${DEVICE}' does not exist! Continue "
+			echo "without? [y/N]"
+			read INPUT
+			if [[ ! -z ${INPUT} && ("${INPUT}" == "y" || "${INPUT}" == "Y") ]]; then
+				continue
+			else
+				die "'${DEVICE}' does not exist"
+			fi
+		elif [ ! -b ${DEVICE} ]; then
 			usage_print "Not a block device: ${DEVICE}"
 		fi
+		DEVICES+=(${DEVICE})
 	done
 }
 
@@ -125,6 +136,8 @@ passphrase_get() {
 
 # Setup the root filesystem as an encrypted RAID-5 array.
 setup_raid5() {
+	local ARGUMENTS="" # Extra arguments for 'mdadm'
+
 	# Check for required utilities.
 	validate_command "cryptsetup"
 	validate_command "losetup"
@@ -136,7 +149,22 @@ setup_raid5() {
 
 	# Check device count.
 	if [ ${#DEVICES[@]} -lt 3 ]; then
-		usage_print "RAID-5 requires at least 3 devices; ${#DEVICES[@]} specified"
+		local INPUT=""
+
+		# Formatting requires at least three devices.
+		if [ ${FORMAT} ]; then
+			usage_print "RAID-5 requires at least 3 devices; '${#DEVICES[@]}' specified"
+		fi
+
+		# Check if user wants a degraded mount.
+		echo "Only '${#DEVICES[@]}' devices specified. Normal operation requires at least three devices. Continue anyways? [y/N]"
+		read INPUT
+		if [[ ! -z ${INPUT} && ("${INPUT}" == "y" || "${INPUT}" == "Y") ]]; then
+			ARGUMENTS="--run"
+			echo "Continuing..."
+		else
+			die "Quitting due to small device count"
+		fi
 	fi
 
 	# Prepare each of the specified devices.
@@ -213,7 +241,7 @@ setup_raid5() {
 		fi
 	else
 		# Assemble the RAID-5 array.
-		mdadm --assemble ${RAID_NAME} ${MAPPINGS[@]}
+		mdadm --assemble ${ARGUMENTS} ${RAID_NAME} ${MAPPINGS[@]}
 		if [ $? -ne 0 ]; then
 			die "Error assembling array: $?"
 		fi
