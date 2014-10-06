@@ -80,9 +80,9 @@ parse_cmdl_args() {
 		# now...
 		NAME="ata-"
 		# Parse the model number.
-		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Model Number:' | sed -r 's/[ \t]*Model Number:[ \t]*'// | sed -r 's/\b[ \t]+\b/_/g' | sed -r 's/ *$//g'`_"
+		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Model Number:' | sed -r 's/^[[:space:]]*Model Number:[[:space:]]*(\w+)[[:space:]]*$/\1/'`_"
 		# Parse the serial number.
-		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Serial Number:' | sed -r 's/[ \t]*Serial Number:[ \t]*'// | sed -r 's/\b[ \t]+\b/_/g' | sed -r 's/ *$//g'`"
+		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Serial Number:' | sed -r 's/^[[:space:]]*Model Number:[[:space:]]*(\w+)[[:space:]]*$/\1/'`"
 
 		# Create the symbolic link
 		ln -s "${DEVICE}" "/dev/disk/by-id/${NAME}"
