@@ -254,6 +254,87 @@ setup_raid5() {
 	fi
 }
 
+setup_single() {
+	# Check for required utilities.
+	validate_command "cryptsetup"
+	validate_command "losetup"
+	if [ ${FORMAT} ]; then
+		validate_command "mkfs.ext4"
+	fi
+	validate_command "mkpasswd"
+
+	# Check device count.
+	if [ ${#DEVICES[@]} -lt 1 ]; then
+		usage_print "Single requires at least 1 device; none specified"
+	elif [ ${#DEVICES[@]} -gt 1 ]; then
+		usage_print "Single requires at most 1 device; ${DEVICES[@]} specified"
+	fi
+
+	# Prepare specified device.
+	DEVICE=${DEVICES[0]}
+
+	# Get the device name.
+	DEVICE_NAME=`echo ${DEVICE} | sed " s/.*\///"`
+
+	# Get the keyfile.
+	DEVICE_KEY="${DEVICE_NAME}.key"
+	if [ ${FORMAT} ]; then
+		# Generate a keyfile.
+		if [ -f ${DEVICE_KEY} ]; then
+			echo "Keyfile ${DEVICE_KEY} for ${DEVICE} found; continuing."
+		else
+			echo "Generating keyfile ${DEVICE_KEY} for ${DEVICE}."
+			./keyfile.sh "${DEVICE_KEY}"
+			if [ $? -ne 0 ]; then
+				die "Error generating keyfile for ${DEVICE}"
+			fi
+		fi
+	else
+		if [ ! -f ${DEVICE_KEY} ]; then
+			die "Device key ${DEVICE_KEY} not found"
+		fi
+	fi
+
+	# Initialize the disk.
+	local DONE=`false`
+	until [ ${DONE} ]; do
+		# Initialize the mapping.
+		./cryptsetup.sh init -n ${DEVICE_NAME} -k ${DEVICE_KEY} ${DEVICE} ${PASSPHRASE} ${SALT}
+		if [ $? -ne 0 ]; then
+			die "Error generating mapping for ${DEVICE}: $?"
+		fi
+
+		# Format the filesystem.
+		if [ ${FORMAT} ]; then
+			# Format the filesystem.
+			mkfs.ext4 -m 1 -b ${BLOCK_SIZE} "/dev/mapper/${DEVICE_NAME}"
+			if [ $? -ne 0 ]; then
+				die "Error formatting filesystem: $?"
+			fi
+		fi
+
+		# Mount the filesytem.
+		mount -t ext4 "/dev/mapper/${DEVICE_NAME}" ${MOUNTPOINT}
+		if [ $? -ne 0 ]; then
+			local AGAIN=""
+
+			# Free the mapping.
+			./cryptsetup.sh free ${DEVICE_NAME}
+
+			# Prompt to re-enter passphrase.
+			echo "Unable to mount /dev/mapper/${DEVICE_NAME}."
+			echo "Re-enter passphrase (y) or quit (n)? [Y/n]"
+			read AGAIN
+			if [ ${AGAIN} == "n" ]; then # Quit.
+				exit 1
+			fi
+			passphrase_get
+			continue
+		fi
+		DONE=true
+	done
+}
+
 # Check the specified command exists.
 # 1:	The command to check for.
 validate_command() {
@@ -283,6 +364,7 @@ usage_print() {
 	echo ""
 	echo "Available commands:"
 	echo "  raid5	Set up the root filesystem as an encrypted RAID-5 device."
+	echo "  single  Set up the root filesystem as a single encrypted device."
 	echo ""
 	echo "Special options:"
 	echo "  -f|--format      Formats the specified root filesystem before setting it up."
@@ -302,6 +384,9 @@ passphrase_get
 case "${COMMAND}" in
 raid5)
 	setup_raid5
+	;;
+single)
+	setup_single
 	;;
 *)
 	usage_print "Unrecognized command: ${COMMAND}"

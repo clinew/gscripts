@@ -113,6 +113,7 @@ usage_print() {
 	echo ""
 	echo "Available commands:"
 	echo "  raid5	Install over a RAID-5 device."
+	echo "  single  Install onto a single device."
 
 	# Exit failure.
 	exit 1
