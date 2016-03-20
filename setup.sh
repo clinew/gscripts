@@ -52,6 +52,9 @@ arguments_parse() {
 		-f|--format) # Format the device.
 			FORMAT=true
 			;;
+		-h|--help)
+			usage_print
+			;;
 		-m|--mountpoint)
 			shift
 			MOUNTPOINT=${1}
@@ -132,6 +135,126 @@ passphrase_get() {
 		# Verified.
 		DONE=true
 	done
+}
+
+# Setup the root filesystem as an encrypted RAID-1 array.
+# TODO: This code was copied from the RAID-5 code; refactor to remove
+# duplicate work.
+setup_raid1() {
+	local ARGUMENTS="" # Extra arguments for 'mdadm'
+
+	# Check for required utilities.
+	validate_command "cryptsetup"
+	validate_command "losetup"
+	validate_command "mdadm"
+	if [ ${FORMAT} ]; then
+		validate_command "mkfs.ext4"
+	fi
+	validate_command "mkpasswd"
+
+	# Check device count.
+	if [ ${#DEVICES[@]} -lt 2 ]; then
+		local INPUT=""
+
+		# Formatting requires at least two devices.
+		if [ ${FORMAT} ]; then
+			usage_print "RAID-1 requires at least 2 devices; '${#DEVICES[@]}' specified"
+		fi
+
+		# Check if user wants a degraded mount.
+		echo "Only '${#DEVICES[@]}' devices specified. Normal operation requires at least two devices. Continue anyways? [y/N]"
+		read INPUT
+		if [[ ! -z ${INPUT} && ("${INPUT}" == "y" || "${INPUT}" == "Y") ]]; then
+			ARGUMENTS="--run"
+			echo "Continuing..."
+		else
+			die "Quitting due to small device count"
+		fi
+	fi
+
+	# Prepare each of the specified devices.
+	for DEVICE in ${DEVICES[@]}; do
+		local DONE=`false`
+
+		# Get the device name.
+		DEVICE_NAME=`echo ${DEVICE} | sed " s/.*\///"`
+
+		# Get the keyfile.
+		DEVICE_KEY="${DEVICE_NAME}.key"
+		if [ ${FORMAT} ]; then
+			# Generate a keyfile.
+			echo "Generating keyfile '${DEVICE_KEY}' for '${DEVICE}'."
+			./keyfile.sh "${DEVICE_KEY}"
+			if [ $? -ne 0 ]; then
+				die "Error generating keyfile for '${DEVICE}'"
+			fi
+		else
+			if [ ! -f ${DEVICE_KEY} ]; then
+				die "Device key '${DEVICE_KEY}' not found"
+			fi
+		fi
+
+		# Initialize the encryption mappings.
+		until [ ${DONE} ]; do
+			# Initialize the mapping.
+			./cryptsetup.sh init -n ${DEVICE_NAME} -k ${DEVICE_KEY} ${DEVICE} ${PASSPHRASE} ${SALT}
+			if [ $? -ne 0 ]; then
+				die "Error generating mapping for '${DEVICE}': $?"
+			fi
+
+			# Check for RAID-1 device.
+			if [ ! ${FORMAT} ]; then
+				mdadm --examine "/dev/mapper/${DEVICE_NAME}"
+				if [ $? -ne 0 ]; then
+					local AGAIN=""
+
+					# Free the mapping.
+					./cryptsetup.sh free ${DEVICE_NAME}
+
+					# Prompt to re-enter passphrase.
+					echo "Device '/dev/mapper/${DEVICE_NAME}' does not appear to be a RAID-5 device."
+					echo "Re-enter passphrase (y) or quit (n)? [Y/n]"
+					read AGAIN
+					if [ ${AGAIN} == "n" ]; then # Quit.
+						exit 1
+					fi
+					passphrase_get
+					continue
+				fi
+			fi
+
+			# Add the device to the mapping list.
+			MAPPINGS=("${MAPPINGS[@]}" "/dev/mapper/${DEVICE_NAME}")
+			DONE=true
+		done
+	done
+
+	# Prepare the RAID-1 array.
+	if [ ${FORMAT} ]; then
+		# Create the RAID-1 array.
+		mdadm --create --verbose ${RAID_NAME} --level=1 --raid-devices=${#DEVICES[@]} ${MAPPINGS[@]}
+		if [ $? -ne 0 ]; then
+			die "Error creating array: $?"
+		fi
+
+		# Format the filesystem.
+		mkfs.ext4 -m 1 -b ${BLOCK_SIZE} ${RAID_NAME}
+		if [ $? -ne 0 ]; then
+			die "Error formatting filesystem: $?"
+		fi
+	else
+		# Assemble the RAID-1 array.
+		mdadm --assemble ${ARGUMENTS} ${RAID_NAME} ${MAPPINGS[@]}
+		if [ $? -ne 0 ]; then
+			die "Error assembling array: $?"
+		fi
+	fi
+
+	# Mount the RAID-1 array.
+	mount -t ext4 ${RAID_NAME} ${MOUNTPOINT}
+	if [ $? -ne 0 ]; then
+		die "Error mounting array: $?"
+	fi
 }
 
 # Setup the root filesystem as an encrypted RAID-5 array.
@@ -363,7 +486,8 @@ usage_print() {
 	echo "./setup.sh <command> [-f|--format] [-m|--mountpoint <mountpoint>] <devices>..."
 	echo ""
 	echo "Available commands:"
-	echo "  raid5	Set up the root filesystem as an encrypted RAID-5 device."
+	echo "  raid1   Set up the root filesystem as an encrypted RAID-1 device."
+	echo "  raid5   Set up the root filesystem as an encrypted RAID-5 device."
 	echo "  single  Set up the root filesystem as a single encrypted device."
 	echo ""
 	echo "Special options:"
@@ -382,6 +506,9 @@ passphrase_get
 
 # Run the command.
 case "${COMMAND}" in
+raid1)
+	setup_raid1
+	;;
 raid5)
 	setup_raid5
 	;;
