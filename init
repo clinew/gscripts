@@ -80,9 +80,9 @@ parse_cmdl_args() {
 		# now...
 		NAME="ata-"
 		# Parse the model number.
-		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Model Number:' | sed -r 's/^[[:space:]]*Model Number:[[:space:]]*(\w+)[[:space:]]*$/\1/'`_"
+		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Model Number:' | sed -r 's/^[[:space:]]*Model Number:[[:space:]]*(\w+)[[:space:]]*$/\1/'`"
 		# Parse the serial number.
-		NAME="${NAME}`hdparm -I ${DEVICE} 2> /dev/null | grep 'Serial Number:' | sed -r 's/^[[:space:]]*Model Number:[[:space:]]*(\w+)[[:space:]]*$/\1/'`"
+		#NAME="${NAME}_`hdparm -I ${DEVICE} 2> /dev/null | grep 'Serial Number:' | sed -r 's/^[[:space:]]*Serial Number:[[:space:]]*(\w+)[[:space:]]*$/\1/'`" # Broken for unknown reason
 
 		# Create the symbolic link
 		ln -s "${DEVICE}" "/dev/disk/by-id/${NAME}"
@@ -91,7 +91,7 @@ parse_cmdl_args() {
 
 # Mount the root filesystem.
 setup() {
-	/bin/bash /setup.sh raid5 -m /new-root ${DEVICES}
+	/bin/bash /setup.sh single -m /new-root ${DEVICES}
 }
 
 # Switch root.

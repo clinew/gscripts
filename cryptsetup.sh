@@ -110,13 +110,13 @@ cryptsetup_init_hop() {
 
 	# Get the key from the keyfile.
 	if [ ! -z ${KEYFILE} ]; then
-		echo "${KEY}" | cryptsetup create --cipher ${1} --key-file=- "${4}" "${5}" 
+		echo "${KEY}" | cryptsetup create --cipher ${1} --hash=sha1 --key-file=- "${4}" "${5}" 
 		PASSPHRASE=${KEY}
 		KEY=`cat /dev/mapper/${4}`
 	fi
 
 	# Set up the mapping.
-	echo "${KEY}" | cryptsetup create --cipher ${1} --key-file=- ${2} ${3}
+	echo "${KEY}" | cryptsetup create --cipher ${1} --hash=sha1 --key-file=- ${2} ${3}
 
 	# Reset the key.
 	if [ ! -z ${KEYFILE} ]; then
