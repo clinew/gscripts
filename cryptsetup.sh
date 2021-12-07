@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (C) 2013 Wade T. Cline
+# Copyright (C) 2013,2021 Wade T. Cline
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -29,9 +29,9 @@ NAME="device"
 PASSPHRASE=""
 # Salt for the key-stretching algorithm.
 SALT=""
-SALT_BASE=""
 
 # Parse arguments.
+# TODO: Use 'getopt'
 arguments_parse() {
 	# Validate argument count.
 	if [ $# -lt 2 ]; then
@@ -76,7 +76,7 @@ arguments_parse() {
 		shift
 
 		# Parse the base salt.
-		SALT_BASE=${1}
+		SALT=${1}
 		shift
 		;;
 	free)
@@ -106,7 +106,7 @@ cryptsetup_init_hop() {
 	echo -n "."
 
 	# Stretch the key.
-	cryptsetup_key_init
+	KEY="$(cryptsetup_key_init "${SALT}" "${KEY}")"
 
 	# Get the key from the keyfile.
 	if [ ! -z ${KEYFILE} ]; then
@@ -173,27 +173,16 @@ cryptsetup_free() {
 }
 
 # Initialize the key through a deliberately-slow Key Derivation Function (KDF).
-# 1:	The specified passphrase to initialize the key with.
+# 1: Salt for the key-derivation function.
+# 2: Key to derive.
+# stdout: Derived key.
 cryptsetup_key_init() {
-	# Validate arguments.
-	if [ $# -ne 0 ]; then
-		usage_print "cryptsetup_key_init() invalid argument count: $#."
-	fi
-
-	# Set the salt.
-	if [ "${KEY}" == "${PASSPHRASE}" ]; then
-		# Use the base salt.
-		SALT=${SALT_BASE}
-	else
-		# Use the first 16 characters of the key.
-		SALT=$(echo ${KEY} | cut -c 1-16)
-	fi
+	local salt="$1"
+	local key="$2"
 
 	# Execute the key derivation function.
-	# The extra shenanegains with 'sed' is to prevent a corner-case where
-	# both 'mkpasswd' and 'echo' would fail if the first line of the
-	# passphrase is a '-'. What an ugly pain!
-	KEY=$(echo -n "C${KEY}" | sed "s/^.//" | mkpasswd -m sha-256 -R 72853 -s -S ${SALT} | cut -d '$' -f 5)
+	key="$(echo -n -- "${key}" | mkpasswd -m sha-256 -R 72853 -s -S "${salt}" | cut -d '$' -f 5)"
+	echo -n "${key}"
 }
 
 # Makes sure that the system can run the script.
