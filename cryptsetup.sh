@@ -124,18 +124,45 @@ cryptsetup_init_hop() {
 	fi
 }
 
+# Set up the cryptography layers using a password.
+cryptsetup_init_password() {
+	# Set up the mappings.
+	echo -n "Hashing/Setup of '${DEVICE}'"
+	local -a layers=(
+		"serpent-xts-essiv:sha512" "${DEVICE}" ".${NAME}0"
+		"aes-xts-essiv:sha512" "/dev/mapper/.${NAME}0" ".${NAME}1"
+		"twofish-xts-essiv:sha512" "/dev/mapper/.${NAME}1" "${NAME}"
+	)
+	for ((i=0; i<${#layers[@]}; i+=3)); do
+		local cipherspec="${layers[i]}"
+		local device="${layers[i+1]}"
+		local name="${layers[i+2]}"
+
+		# Stretch the key.
+		echo -n "."
+		KEY="$(cryptsetup_key_stretch "${SALT}" "${KEY}")"
+
+		# Set-up the mapping.
+		printf %s "${KEY}" | cryptsetup open --type plain --hash sha512 --cipher "${cipherspec}" "${device}" "${name}"
+	done
+	echo ""
+}
+
 # Setup cryptsetup. (almost redundant)
 cryptsetup_init() {
 	# Set the first value of the key.
 	KEY=${PASSPHRASE}
 
+	if [ -z "${KEYFILE}" ]; then
+		cryptsetup_init_password
+		return
+	fi
+
 	# Set up the keyfile.
-	if [ ! -z ${KEYFILE} ]; then
-		DEVICE_LOOP=`losetup -f`
-		losetup "${DEVICE_LOOP}" "${KEYFILE}"
-		if [ "$?" -ne 0 ]; then
-			usage_print "Error setting up loop device: $?"
-		fi
+	DEVICE_LOOP=`losetup -f`
+	losetup "${DEVICE_LOOP}" "${KEYFILE}"
+	if [ "$?" -ne 0 ]; then
+		usage_print "Error setting up loop device: $?"
 	fi
 
 	# Set up the mappings.
@@ -149,11 +176,9 @@ cryptsetup_init() {
 	echo ""
 
 	# Free the keyfile.
-	if [ ! -z ${KEYFILE} ]; then
-		NAME="${NAME}_key"
-		cryptsetup_free
-		losetup -d "${DEVICE_LOOP}"
-	fi
+	NAME="${NAME}_key"
+	cryptsetup_free
+	losetup -d "${DEVICE_LOOP}"
 }
 
 # Remove cryptsetup mappings.
