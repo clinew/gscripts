@@ -3,7 +3,7 @@
 # Simple program that cleans up the mappings for a device. The name is a
 # misnomer, since it doesn't actually unmount the mounted filesystem.
 #
-# Copyright (C) 2013 Wade T. Cline
+# Copyright (C) 2013, 2021 Wade T. Cline
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,18 +25,25 @@ NAME="device"
 
 # Parse arguments.
 arguments_parse() {
-	# Parse optional arguments.
-	while [ $# -gt 0 ]; do
-		case "$1" in
-		-n|--name)
-			shift
-			NAME=$1
+	# Parse switch arguments.
+	while getopts "n:" opt; do
+		case "$opt" in
+		n)
+			NAME="${OPTARG}"
 			shift
 			;;
 		*)
-			usage_print "Unrecognized option: $1"
+			usage_print "Unknown argument: $opt"
+			;;
 		esac
+		shift
 	done
+
+	# Parse optional positional argument
+	if [ $# -gt 0 ]; then
+		MOUNT_PATH="$1"
+		shift
+	fi
 }
 
 # Check for installed tools.
@@ -55,9 +62,11 @@ usage_print() {
 	fi
 
 	# Print usage message.
-	echo "./umount.sh [-n <name>]"
+	echo "./umount.sh [-n <name>] [path]"
 	echo ""
-	echo "-n|--name: Name for the mapping of the device (default: "
+	echo "     path: Path to unmount and to remove mappings from"
+	echo ""
+	echo "       -n: Name for the mapping of the device (default: "
 	echo "           \"device\")"
 	exit
 }
@@ -68,5 +77,19 @@ system_validate
 # Parse the arugments.
 arguments_parse $@
 
+# Unmount via mount path.
+if [ -n "${MOUNT_PATH}" ]; then
+	# Find mount source.
+	NAME="$(basename "$(findmnt -n -o SOURCE "${MOUNT_PATH}")")"
+
+	# Unmount the path.
+	umount "${MOUNT_PATH}"
+	ret=$?
+	if [ $ret -ne 0 ]; then
+		# Unmount failed.
+		exit 1
+	fi
+fi
+
 # Remove the mappings.
-./cryptsetup.sh free ${NAME}
+./cryptsetup.sh free "${NAME}"
