@@ -52,7 +52,7 @@ fi
 system_validate
 
 # Set up the file.
-truncate -s 512 ${1}
+truncate -s 1536 ${1}
 if [ $? -ne 0 ]; then
 	usage_print "Error creating file: $?"
 fi

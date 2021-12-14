@@ -96,43 +96,75 @@ arguments_parse() {
 	fi
 }
 
-# Set up the specified hop.
-# 1:	Cipher for the current hop.
-# 2:	Mapping destination for the current hop.
-# 3:	Block device source for the current hop.
-# 4:	Keyfile destination for the current hop.
-# 5:	Keyfile source for the current hop.
-cryptsetup_init_hop() {
-	echo -n "."
+# Setup cryptsetup. (almost redundant)
+cryptsetup_init() {
+	# Define the cryptography layers.
+	local -a layers=(
+		"serpent-xts-essiv:sha256" "${DEVICE}" ".${NAME}0"
+		"aes-xts-essiv:sha256" "/dev/mapper/.${NAME}0" ".${NAME}1"
+		"twofish-xts-essiv:sha256" "/dev/mapper/.${NAME}1" "${NAME}"
+	)
 
-	# Stretch the key.
-	KEY="$(cryptsetup_key_stretch "${SALT}" "${KEY}")"
+	# Set the first value of the key.
+	KEY=${PASSPHRASE}
 
-	# Get the key from the keyfile.
-	if [ ! -z ${KEYFILE} ]; then
-		echo "${KEY}" | cryptsetup create --cipher ${1} --key-file=- "${4}" "${5}" 
-		PASSPHRASE=${KEY}
-		KEY=`cat /dev/mapper/${4}`
+	# Set-up the crypytography layers.
+	echo -n "Hashing/Setup of '${DEVICE}'"
+	if [ -z "${KEYFILE}" ]; then
+		cryptsetup_init_password
+	else
+		cryptsetup_init_keyfile
 	fi
+	echo ""
+}
 
-	# Set up the mapping.
-	echo "${KEY}" | cryptsetup create --cipher ${1} --key-file=- ${2} ${3}
-
-	# Reset the key.
-	if [ ! -z ${KEYFILE} ]; then
-		KEY=${PASSPHRASE}
+# Set up the cryptography layers using a keyfile.
+cryptsetup_init_keyfile() {
+	# Set up the keyfile loopback device.
+	local -a device_loop="$(losetup -f)"
+	losetup "${device_loop}" "${KEYFILE}"
+	ret=$?
+	if [ $ret -ne 0 ]; then
+		echo "Error setting up loop device: ${ret}"
+		return 1
 	fi
+	local name_key="$(basename ${device_loop})_key"
+
+	# Set-up the cryptography mappings.
+	# The idea for using a different keyfile mapping with each layer is so
+	# that the each segment of the key is encrypted with a different
+	# symmetric cipher rather than the whole key being encrypted with a
+	# single symmetric cipher.
+	for ((i=0; i<${#layers[@]}; i+=3)); do
+		local cipherspec="${layers[i]}"
+		local device="${layers[i+1]}"
+		local name="${layers[i+2]}"
+		local iter=$(($i/3))
+
+		# Stretch the key.
+		# Not technically necessary to do multiple smaller stretches
+		# rather than one big stretch, but multiple stretches make a
+		# nice progress indicator.
+		echo -n "."
+		KEY="$(cryptsetup_key_stretch "${SALT}" "${KEY}")"
+
+		# Set-up the keyfile mapping.
+		printf %s "${KEY}" | cryptsetup open --type plain --hash sha512 --cipher "${cipherspec}" "${device_loop}" "${name_key}"
+
+		# Set-up the crypto mapping.
+		cryptsetup open --type plain --key-file="/dev/mapper/${name_key}" --keyfile-offset=$(($iter*512)) --cipher "${cipherspec}" "${device}" "${name}"
+
+		# Remove the keyfile mapping.
+		cryptsetup remove "${name_key}"
+	done
+
+	# Free the keyfile loopback device.
+	losetup -d "${device_loop}"
 }
 
 # Set up the cryptography layers using a password.
 cryptsetup_init_password() {
 	# Set up the mappings.
-	echo -n "Hashing/Setup of '${DEVICE}'"
-	local -a layers=(
-		"serpent-xts-essiv:sha512" "${DEVICE}" ".${NAME}0"
-		"aes-xts-essiv:sha512" "/dev/mapper/.${NAME}0" ".${NAME}1"
-		"twofish-xts-essiv:sha512" "/dev/mapper/.${NAME}1" "${NAME}"
-	)
 	for ((i=0; i<${#layers[@]}; i+=3)); do
 		local cipherspec="${layers[i]}"
 		local device="${layers[i+1]}"
@@ -145,40 +177,6 @@ cryptsetup_init_password() {
 		# Set-up the mapping.
 		printf %s "${KEY}" | cryptsetup open --type plain --hash sha512 --cipher "${cipherspec}" "${device}" "${name}"
 	done
-	echo ""
-}
-
-# Setup cryptsetup. (almost redundant)
-cryptsetup_init() {
-	# Set the first value of the key.
-	KEY=${PASSPHRASE}
-
-	if [ -z "${KEYFILE}" ]; then
-		cryptsetup_init_password
-		return
-	fi
-
-	# Set up the keyfile.
-	DEVICE_LOOP=`losetup -f`
-	losetup "${DEVICE_LOOP}" "${KEYFILE}"
-	if [ "$?" -ne 0 ]; then
-		usage_print "Error setting up loop device: $?"
-	fi
-
-	# Set up the mappings.
-	echo -n "Hashing/Setup of '${DEVICE}'"
-	cryptsetup_init_hop "serpent-xts-essiv:sha256" ".${NAME}0" "${DEVICE}" ".${NAME}_key0" "${KEYFILE}"
-	cryptsetup_init_hop "aes-xts-essiv:sha256" ".${NAME}1" "/dev/mapper/.${NAME}0" ".${NAME}_key1" "/dev/mapper/.${NAME}_key0"
-	cryptsetup_init_hop "twofish-xts-essiv:sha256" ".${NAME}2" "/dev/mapper/.${NAME}1" ".${NAME}_key2" "/dev/mapper/.${NAME}_key1"
-	cryptsetup_init_hop "serpent-xts-essiv:sha256" ".${NAME}3" "/dev/mapper/.${NAME}2" ".${NAME}_key3" "/dev/mapper/.${NAME}_key2"
-	cryptsetup_init_hop "aes-xts-essiv:sha256" ".${NAME}4" "/dev/mapper/.${NAME}3" ".${NAME}_key4" "/dev/mapper/.${NAME}_key3"
-	cryptsetup_init_hop "twofish-xts-essiv:sha256" "${NAME}" "/dev/mapper/.${NAME}4" "${NAME}_key" "/dev/mapper/.${NAME}_key4"
-	echo ""
-
-	# Free the keyfile.
-	NAME="${NAME}_key"
-	cryptsetup_free
-	losetup -d "${DEVICE_LOOP}"
 }
 
 # Remove cryptsetup mappings.
@@ -190,9 +188,6 @@ cryptsetup_free() {
 
 	# Remove cryptsetup mappings.
 	cryptsetup remove "${NAME}"
-	cryptsetup remove ".${NAME}4"
-	cryptsetup remove ".${NAME}3"
-	cryptsetup remove ".${NAME}2"
 	cryptsetup remove ".${NAME}1"
 	cryptsetup remove ".${NAME}0"
 }
