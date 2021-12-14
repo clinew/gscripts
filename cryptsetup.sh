@@ -106,7 +106,7 @@ cryptsetup_init_hop() {
 	echo -n "."
 
 	# Stretch the key.
-	KEY="$(cryptsetup_key_init "${SALT}" "${KEY}")"
+	KEY="$(cryptsetup_key_stretch "${SALT}" "${KEY}")"
 
 	# Get the key from the keyfile.
 	if [ ! -z ${KEYFILE} ]; then
@@ -172,16 +172,20 @@ cryptsetup_free() {
 	cryptsetup remove ".${NAME}0"
 }
 
-# Initialize the key through a deliberately-slow Key Derivation Function (KDF).
+# Stretch the specified key by hashing it with a large number of rounds.
 # 1: Salt for the key-derivation function.
 # 2: Key to derive.
-# stdout: Derived key.
-cryptsetup_key_init() {
+# 3(opt): Hash function to use.
+# 4(opt): Number of rounds to use.
+# stdout: Stretched key.
+cryptsetup_key_stretch() {
 	local salt="$1"
 	local key="$2"
+	local hash="${3:-sha-512}"
+	local rounds=${4:-72853}
 
 	# Execute the key derivation function.
-	key="$(echo -n -- "${key}" | mkpasswd -m sha-256 -R 72853 -s -S "${salt}" | cut -d '$' -f 5)"
+	key="$(printf %s "${key}" | mkpasswd -m "${hash}" -R ${rounds} -s -S "${salt}" | cut -d '$' -f 5)"
 	echo -n "${key}"
 }
 
