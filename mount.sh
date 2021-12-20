@@ -19,6 +19,8 @@
 
 # The device to mount.
 DEVICE=""
+# The filesystem type to use.
+FILESYSTEM="ext4"
 # Whether to format the filesystem or not.
 FORMAT=`false`
 # Keyfile for the specified device.
@@ -46,15 +48,20 @@ arguments_parse() {
 			;;
 		-k|--key-file)
 			shift
-			KEYFILE=${1}
-			if [ ! -f ${KEYFILE} ]; then
-				usage_print "Key file ${KEYFILE} not a file"
+			KEYFILE="${1}"
+			if [ ! -f "${KEYFILE}" ]; then
+				usage_print "Key file '${KEYFILE}' not a file"
 			fi
 			shift
 			;;
 		-n|--name)
 			shift
-			NAME=$1
+			NAME="$1"
+			shift
+			;;
+		-t|--type)
+			shift
+			FILESYSTEM="${1}"
 			shift
 			;;
 		*)
@@ -72,13 +79,14 @@ arguments_parse() {
 usage_print() {
 	echo "ERROR: $1."
 	echo ""
-	echo "./mount.sh [-f] [-n name] [-k keyfile] <device> <mount point>"
+	echo "./mount.sh [-f] [-n name] [-k keyfile] [-t filesystem] <device> <mount point>"
 	echo ""
-	echo "--format: Format the specified filesystem as ext3; this will"
+	echo "--format: Format the specified filesystem; this will"
 	echo "          also force-verify the passphrase."
 	echo "  --name: Name for the mapping of the specified device."
 	echo "		(default: \"device\")."
 	echo "--key-file: Password-protected keyfile for the specified device."
+	echo "  --type: Filesystem type to use (default: '${FILESYSTEM}')."
 	exit 1
 }
 
@@ -129,7 +137,7 @@ main_format() {
 
 	# Format and mount the device.
 	./cryptsetup.sh init -n ${NAME} ${KEYFILE} ${DEVICE} ${PASSPHRASE} ${SALT}
-	mkfs.ext3 "/dev/mapper/${NAME}"
+	mkfs.${FILESYSTEM} "/dev/mapper/${NAME}"
 	main_mount
 	if [ $? -ne 0 ]; then
 		echo "Something terrible has happened."
@@ -140,7 +148,7 @@ main_format() {
 
 # Mounts the mapped device.
 main_mount() {
-	mount -t ext3 "/dev/mapper/${NAME}" "${MOUNTPOINT}"
+	mount -t "${FILESYSTEM}" "/dev/mapper/${NAME}" "${MOUNTPOINT}"
 	return $?
 }
 
