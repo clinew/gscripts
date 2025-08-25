@@ -127,8 +127,6 @@ main() {
 	# This will extract the binaries from busybox and place them in their
 	# correct (hopefully) directories. Not sure what the -s option does.
 	/bin/busybox --install -s
-	# I think that this sets permissions of any created files.
-	umask 0777
 	# Mount the proc filesystem.
 	[ ! -d /proc ] && mkdir /proc
 	/bin/mount -t proc proc /proc
